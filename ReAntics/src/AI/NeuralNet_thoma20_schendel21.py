@@ -1,3 +1,5 @@
+import math
+
 from AIPlayerUtils import *
 from GameState import *
 from Move import Move
@@ -9,6 +11,7 @@ import random
 import sys
 sys.path.append("..")  # so other modules can be found in parent dir
 
+import numpy as np
 
 ##
 #AIPlayer
@@ -299,3 +302,121 @@ class Node:
     self.depth = depth
     self.steps = steps + self.depth
     self.parent = parent
+
+
+class NeuralNetwork:
+
+    # Create a neueral network with random weights given the shape of the network
+    # numInputs and numOutputs are ints and
+    # hidden layers is a list of ints, representing the number of nodes in each hidden layer
+    def __init__(self, numInputs, numOutputs, hiddenLayers, learningRate):
+        self.numInputs = numInputs
+        self.numOutputs = numOutputs
+
+        layerSizes = [numInputs] + hiddenLayers + [numOutputs]
+
+        # create a list of matrices each representing a layer in the neural network
+        # number of rows based on output, number of columns based on input + bias
+        self.layers = [self.randomMatrix(layerSizes[i+1] , layerSizes[i] + 1) for i in range(len(layerSizes)-1)]
+
+        self.learningRate = learningRate
+
+    def randomMatrix(self, numRows, numCols):
+        # create a matrix of random values in range [-1, 1)
+        return 2 * np.random.random_sample((numRows, numCols)) - 1
+
+    # given an input, return the result of the nueral network
+    # input should be a list of length self.numInputs
+    # returns a list of lists representing the output from each layer
+    def evaluateComplete(self, input):
+
+        layerOutputs = []
+
+        for layer in self.layers:
+            # append the bias
+            input = np.append(input, [1])
+
+            input = np.matmul(layer, input)
+
+            input = self.activationFunction(input)
+
+            layerOutputs.append(input)
+
+        return layerOutputs
+
+    # given an input, return the result of the nueral network
+    # input should be a list of length self.numInputs
+    # returns a list of length self.numOutputs
+    def evaluate(self, input):
+        #return the output from the last layer
+        return self.evaluateComplete(input)[-1]
+
+    # given a list of values, apply the activation function to each and
+    # return a list of the same length
+    def activationFunction(self, input):
+        return [sigmoid(x) for x in input]
+
+
+
+    # given an input list and its target outputs,
+    # adjust the weights of this neural network
+    def train(self, input, target):
+        actualLayerOutputs = self.evaluateComplete(input)
+
+        # compute error terms of output nodes
+        actual = actualLayerOutputs[-1]
+
+        # a list of lists, where errorTerms[i] is a list of error terms of the ith layer
+        errorTerms = [ [ (target[i]-actual[i])*actual[i]*(1-actual[i]) for i in range(len(actual))] ]
+
+        #compute errors of hidden nodes
+        for layerIndex in range(len(self.layers)-2, -1, -1):
+            currLayer = self.layers[layerIndex]
+            # the layer in front of the layer we are currently calculating weights for
+            frontLayer = self.layers[layerIndex+1]
+
+            # the error of each node in the current layer
+            layerErr = []
+
+            #number of weights used to calculate error (doesn't include bias)
+            numWeights = frontLayer.shape[1]-1
+
+            # term of the fist node in the first hidden layer
+            for h in range(currLayer.shape[0]):
+                layerErr.append( sum( [frontLayer[i][0] * errorTerms[0][i] for i in range(numWeights)] ) )
+
+            layerErrTerms = [layerErr[i]*sigmoidPrime(actualLayerOutputs[layerIndex][i]) for i in range(len(layerErr))]
+
+            errorTerms = [layerErrTerms] + errorTerms
+
+        # apply error terms to all weights
+        for layerIndex in range(len(self.layers)):
+            layer = self.layers[layerIndex]
+
+            #add error term to each value in the row
+            for n in range(layer.shape[0]):
+                for w in range(len(layer[n])):
+                    inputValue = input[n] if layerIndex == 0 else actualLayerOutputs[layerIndex-1][n]
+                    layer[n][w] += self.learningRate*errorTerms[layerIndex][n]*inputValue
+
+def sigmoid(x):
+    return 1/(1+ math.exp(-x))
+
+# given the value of sigmoid, return its slope
+def sigmoidPrime(sig):
+    return sig*(1-sig)
+
+def testNN():
+    np.random.seed(10)
+    nn = NeuralNetwork(2, 2, [2], .1)
+
+    print(nn.evaluate([1, 2]))
+
+def testTrain():
+    np.random.seed(10)
+    nn = NeuralNetwork(2, 2, [2], .1)
+
+    nn.train([1,2], [.5,.5])
+
+if __name__ == '__main__':
+    testTrain()
