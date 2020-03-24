@@ -32,7 +32,7 @@ class AIPlayer(Player):
     #   cpy           - whether the player is a copy (when playing itself)
     ##
     def __init__(self, inputPlayerId):
-        super(AIPlayer, self).__init__(inputPlayerId, "A*_Search")
+        super(AIPlayer, self).__init__(inputPlayerId, "NeuralNet")
 
     ##
     #getPlacement
@@ -248,9 +248,9 @@ class AIPlayer(Player):
       for ant in myOffense:
         if len(enemyWorkers) == 0:
           if not enemyQueen == None:
-            dist = stepsToReach(myState, ant.coords, enemyHill.coords)
+            dist = approxDist(ant.coords, enemyHill.coords)
         else:
-          dist = stepsToReach(myState, ant.coords, enemyWorkers[0].coords) + 10
+          dist = approxDist(ant.coords, enemyWorkers[0].coords) + 10
           if len(enemyWorkers) > 1:
             dist += 10
 
@@ -261,12 +261,12 @@ class AIPlayer(Player):
       if not len(myOffense) > 0:
         foodNeeded = 11 - myFood
         for w in myWorkers:
-          distanceToTunnel = stepsToReach(myState, w.coords, myTunnel.coords)
-          distanceToHill = stepsToReach(myState, w.coords, myHill.coords)
+          distanceToTunnel = approxDist(w.coords, myTunnel.coords)
+          distanceToHill = approxDist(w.coords, myHill.coords)
           distanceToFood = 9999
           for food in foods:
-            if stepsToReach(myState, w.coords, food.coords) < distanceToFood:
-              distanceToFood = stepsToReach(myState, w.coords, food.coords)
+            if approxDist(w.coords, food.coords) < distanceToFood:
+              distanceToFood = approxDist(w.coords, food.coords)
           if w.carrying: # if carrying go to hill/tunnel
             foodWin += min(distanceToHill, distanceToTunnel) - 9.5
             if w.coords == myHill.coords or w.coords == myTunnel.coords:
