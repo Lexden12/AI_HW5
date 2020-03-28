@@ -33,6 +33,10 @@ class AIPlayer(Player):
     ##
     def __init__(self, inputPlayerId):
         super(AIPlayer, self).__init__(inputPlayerId, "NeuralNet")
+        self.nn = NeuralNetwork(10, 1, [20, 7], 0.1)
+        self.nn.load('../thoma20_schendel21_nn.npy')
+        self.eval = {}
+        self.moveCount = 0
 
     ##
     #getPlacement
@@ -98,15 +102,20 @@ class AIPlayer(Player):
     #Return: The Move to be made
     ##
     def getMove(self, currentState):
+        self.moveCount += 1
+        if self.moveCount > 200:
+          return None
+        buildCache(currentState)
         frontierNodes = []
         expandedNodes = []
         steps = self.heuristicStepsToGoal(currentState)
+        self.eval[currentState] = steps
         root = Node(None, currentState, 0, 0, None)
         frontierNodes.append(root)
 
         # For loops goes until set depth
         # in this case a depth of 3 
-        for x in range(3):
+        for x in range(2):
           frontierNodes.sort(key=self.sortAttr)
           leastNode = root
           leastNode = self.bestMove(frontierNodes)
@@ -176,8 +185,27 @@ class AIPlayer(Player):
     # This agent doens't learn
     #
     def registerWin(self, hasWon):
-        #method templaste, not implemented
-        pass
+        print("Move Count: {}".format(self.moveCount))
+        self.moveCount = 0
+        training, validation = self.getTrainingData()
+        for state, target in training:
+          input = utilityComponents(state, state.whoseTurn)
+          self.nn.train(input, [target])
+        self.nn.save('./thoma20_schendel21_nn.npy')
+
+        err = []
+        for state, target in validation:
+          input = utilityComponents(state, state.whoseTurn)
+          err.append(abs(target - self.nn.evaluate(input)[0]))
+        print("Min Error: {}".format(min(err)))
+        print("Avg Error: {}".format(sum(err)/len(err)))
+        print("Max Error: {}\n".format(max(err)))
+
+    def getTrainingData(self):
+        all_data = random.sample(self.eval.items(), k=len(self.eval.items()))
+        training = all_data[:int(len(self.eval.items()) * 0.8)]
+        validation = all_data[int(len(self.eval.items()) * 0.8):]
+        return (training, validation)
 
     ##
     # sortAttr
@@ -287,7 +315,118 @@ class AIPlayer(Player):
         if enemyQueen.coords == enemyHill.coords:
           occupyWin += 20
 
-      return occupyWin
+      return 1-math.exp(-0.001*(occupyWin))
+
+class Cache:
+    def __init__(self, state):
+        self.foodCoords = [0]*2
+        self.depositCoords = [0]*2
+        self.rtt = [0]*2
+
+        foods = getConstrList(state, None, (FOOD,))
+        for player in [0,1]:
+            deposits = getConstrList(state, player, (ANTHILL, TUNNEL))
+
+            #find the best combo, based on steps to reach one to the other
+            bestCombo = min([(d, f) for d in deposits for f in foods], key=lambda pair: stepsToReach(state, pair[0].coords, pair[1].coords))
+
+            self.depositCoords[player] = bestCombo[0].coords
+            self.foodCoords[player] = bestCombo[1].coords
+
+            self.rtt[player] = approxDist(self.depositCoords[player], self.foodCoords[player])+1
+
+globalCache = None
+
+def buildCache(state):
+    global globalCache
+
+    if globalCache is None or not cacheValid(state):
+        globalCache = Cache(state)
+
+#check whether the cache still refers to the current game
+def cacheValid(state):
+    allFood = [food.coords for food in getConstrList(state, None, (FOOD,))]
+    allDeposits = [deposit.coords for deposit in getConstrList(state, None, (ANTHILL, TUNNEL))]
+    return all(foodCoord in allFood for foodCoord in globalCache.foodCoords) and \
+           all(depositCoord in allDeposits for depositCoord in globalCache.depositCoords)
+
+# evaluate the utility of a state from a given player's perspective
+# return a tuple of relevant unweighted components
+def utilityComponents(state, perspective):
+    enemy = 1-perspective
+
+    # get lists for ants
+    myWorkers = getAntList(state, perspective, types=(WORKER,))
+    enemyWorkers = getAntList(state, enemy, types=(WORKER,))
+
+    myWarriors = getAntList(state, perspective, types=(DRONE,SOLDIER,R_SOLDIER))
+    enemyWarriors = getAntList(state, enemy, types=(DRONE,SOLDIER,R_SOLDIER))
+
+    myQueen = state.inventories[perspective].getQueen()
+    enemyQueen = state.inventories[enemy].getQueen()
+
+    foodCoords = globalCache.foodCoords[perspective]
+    depositCoords = globalCache.depositCoords[perspective]
+    anthillCoords = state.inventories[perspective].getAnthill().coords
+
+    # it's bad if the queen is on the food
+    queenInTheWayScore = 0
+
+    queenCoords = myQueen.coords
+    if queenCoords in [foodCoords, depositCoords, anthillCoords]:
+        queenInTheWayScore -= 1
+
+    queenHealthScore = myQueen.health
+
+    workerDistScore = 0
+    workerDangerScore = 0
+    for worker in myWorkers:
+
+        # If the worker is carrying food, add the distance to the tunnel to the score
+        if worker.carrying == True:
+            distanceFromTunnel = approxDist(worker.coords, depositCoords)
+            workerDistScore -= distanceFromTunnel
+
+        # if the worker is not carrying food, add the distance from the food and tunnel to the score
+        else:
+            distTunnelFood = approxDist(foodCoords, depositCoords)
+            workerDistScore -= distTunnelFood
+            distanceFromFood = approxDist(worker.coords, foodCoords)
+            workerDistScore -= distanceFromFood
+
+        #its bad to be close to enemy warriors
+        for warrior in enemyWarriors:
+            #warriorRange = UNIT_STATS[warrior.type][RANGE] + UNIT_STATS[warrior.type][MOVEMENT]
+            if approxDist(worker.coords, warrior.coords) < 2:
+                workerDangerScore -= 1
+
+    # Aim to attack workers, if there are no workers, aim to attack queen
+    if len(enemyWorkers) != 0:
+        targetCoords = enemyWorkers[0].coords
+    else:
+        targetCoords = enemyQueen.coords
+
+    warriorDistScore = 0
+    # Add distance from fighter ants to their targets to score, with a preference to move vertically
+    for warrior in myWarriors:
+        warriorDistScore -= (warrior.coords[0] - targetCoords[0])**2
+        warriorDistScore -= (warrior.coords[1] - targetCoords[1])**2
+
+    #do we have an attacker?
+    attackScore = UNIT_STATS[myWarriors[0].type][ATTACK] if len(myWarriors) == 1 else 0
+
+    # punishment for if the enemy has workers
+    enemyWorkerScore = - (len(enemyWorkers) * len(myWarriors))
+
+    # Heavy punishment for not having workers, since workers are needed to win
+    noWorkerScore = -1 if len(myWorkers) == 0 else 0
+
+    foodScore = state.inventories[perspective].foodCount
+
+    antCountScore = -len(getAntList(state, perspective))
+
+    return [sigmoid(component, 0.01) for component in (queenInTheWayScore, workerDistScore, workerDangerScore, warriorDistScore, enemyWorkerScore,
+            noWorkerScore, foodScore, attackScore, antCountScore, queenHealthScore)]
 
 ##
 # Node Class
@@ -320,6 +459,15 @@ class NeuralNetwork:
         self.layers = [self.randomMatrix(layerSizes[i+1] , layerSizes[i] + 1) for i in range(len(layerSizes)-1)]
 
         self.learningRate = learningRate
+
+    def save(self, filepath):
+      np.save(filepath, self.layers)
+
+    def load(self, filepath):
+      #try:
+      self.layers = np.load(filepath, allow_pickle=True)
+      #except:
+      #  print("Could not load NN")
 
     def randomMatrix(self, numRows, numCols):
         # create a matrix of random values in range [-1, 1)
@@ -379,11 +527,11 @@ class NeuralNetwork:
             layerErr = []
 
             #number of weights used to calculate error (doesn't include bias)
-            numWeights = frontLayer.shape[1]-1
+            numWeights = frontLayer.shape[0]
 
             # term of the fist node in the first hidden layer
             for h in range(currLayer.shape[0]):
-                layerErr.append( sum( [frontLayer[i][0] * errorTerms[0][i] for i in range(numWeights)] ) )
+                layerErr.append( sum( [frontLayer[i][h] * errorTerms[0][i] for i in range(numWeights)] ) )
 
             layerErrTerms = [layerErr[i]*sigmoidPrime(actualLayerOutputs[layerIndex][i]) for i in range(len(layerErr))]
 
@@ -396,11 +544,16 @@ class NeuralNetwork:
             #add error term to each value in the row
             for n in range(layer.shape[0]):
                 for w in range(len(layer[n])):
-                    inputValue = input[n] if layerIndex == 0 else actualLayerOutputs[layerIndex-1][n]
+                    if w == len(layer[n])-1:
+                      inputValue = 1
+                    elif layerIndex == 0:
+                      inputValue = input[w] 
+                    else:
+                      inputValue = actualLayerOutputs[layerIndex-1][w]
                     layer[n][w] += self.learningRate*errorTerms[layerIndex][n]*inputValue
 
-def sigmoid(x):
-    return 1/(1+ math.exp(-x))
+def sigmoid(x, p=1):
+    return 1/(1+ math.exp(-p*x))
 
 # given the value of sigmoid, return its slope
 def sigmoidPrime(sig):
