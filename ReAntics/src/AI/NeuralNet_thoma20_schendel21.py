@@ -35,6 +35,7 @@ class AIPlayer(Player):
         super(AIPlayer, self).__init__(inputPlayerId, "NeuralNet")
         self.nn = NeuralNetwork(10, 1, [20, 7], 0.1)
         self.nn.load('../thoma20_schendel21_nn.npy')
+        self.useNN = False
         self.eval = {}
         self.moveCount = 0
 
@@ -108,7 +109,10 @@ class AIPlayer(Player):
         buildCache(currentState)
         frontierNodes = []
         expandedNodes = []
-        steps = self.heuristicStepsToGoal(currentState)
+        if not self.useNN:
+          steps = self.heuristicStepsToGoal(currentState)
+        else:
+          steps = self.nn.evaluate(utilityComponents(currentState, currentState.whoseTurn))[0]
         self.eval[currentState] = steps
         root = Node(None, currentState, 0, 0, None)
         frontierNodes.append(root)
@@ -159,7 +163,10 @@ class AIPlayer(Player):
       nodes = []
       for move in moves:
         nextState = getNextState(node.state, move)
-        steps = self.heuristicStepsToGoal(nextState)
+        if not self.useNN:
+          steps = self.heuristicStepsToGoal(nextState)
+        else:
+          steps = self.nn.evaluate(utilityComponents(nextState, nextState.whoseTurn))[0]
         newDepth = node.depth + 1
         newNode = Node(move, nextState, newDepth, steps, node)
         nodes.append(newNode)
@@ -187,6 +194,8 @@ class AIPlayer(Player):
     def registerWin(self, hasWon):
         print("Move Count: {}".format(self.moveCount))
         self.moveCount = 0
+        if self.useNN:
+          return
         training, validation = self.getTrainingData()
         for state, target in training:
           input = utilityComponents(state, state.whoseTurn)
