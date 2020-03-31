@@ -33,8 +33,8 @@ class AIPlayer(Player):
     ##
     def __init__(self, inputPlayerId):
         super(AIPlayer, self).__init__(inputPlayerId, "NeuralNet")
-        self.nn = NeuralNetwork(10, 1, [20, 7], 0.1)
-        self.nn.load('../thoma20_schendel21_nn.npy')
+        self.nn = NeuralNetwork(8, 1, [20], 0.05)
+        #self.nn.load('../thoma20_schendel21_nn.npy')
         self.useNN = False
         self.eval = {}
         self.moveCount = 0
@@ -368,7 +368,7 @@ def utilityComponents(state, perspective):
     myWorkers = getAntList(state, perspective, types=(WORKER,))
     enemyWorkers = getAntList(state, enemy, types=(WORKER,))
 
-    myWarriors = getAntList(state, perspective, types=(DRONE,SOLDIER,R_SOLDIER))
+    myWarriors = getAntList(state, perspective, types=(SOLDIER,))
     enemyWarriors = getAntList(state, enemy, types=(DRONE,SOLDIER,R_SOLDIER))
 
     myQueen = state.inventories[perspective].getQueen()
@@ -377,65 +377,50 @@ def utilityComponents(state, perspective):
     foodCoords = globalCache.foodCoords[perspective]
     depositCoords = globalCache.depositCoords[perspective]
     anthillCoords = state.inventories[perspective].getAnthill().coords
+    myInv = getCurrPlayerInventory(state)
+    myFood = myInv.foodCount
+    tunnels = getConstrList(state, types=(TUNNEL,))
+    myTunnel = tunnels[1] if (tunnels[0].coords[1] > 5) else tunnels[0]
+    enemyTunnel = tunnels[0] if (myTunnel is tunnels[1]) else tunnels[1]
+    hills = getConstrList(state, types=(ANTHILL,))
+    myHill = hills[1] if (hills[0].coords[1] > 5) else hills[0]
+    enemyHill = hills[1] if (myHill is hills[0]) else hills[0]
 
-    # it's bad if the queen is on the food
-    queenInTheWayScore = 0
-
-    queenCoords = myQueen.coords
-    if queenCoords in [foodCoords, depositCoords, anthillCoords]:
-        queenInTheWayScore -= 1
-
-    queenHealthScore = myQueen.health
-
-    workerDistScore = 0
-    workerDangerScore = 0
-    for worker in myWorkers:
-
-        # If the worker is carrying food, add the distance to the tunnel to the score
-        if worker.carrying == True:
-            distanceFromTunnel = approxDist(worker.coords, depositCoords)
-            workerDistScore -= distanceFromTunnel
-
-        # if the worker is not carrying food, add the distance from the food and tunnel to the score
-        else:
-            distTunnelFood = approxDist(foodCoords, depositCoords)
-            workerDistScore -= distTunnelFood
-            distanceFromFood = approxDist(worker.coords, foodCoords)
-            workerDistScore -= distanceFromFood
-
-        #its bad to be close to enemy warriors
-        for warrior in enemyWarriors:
-            #warriorRange = UNIT_STATS[warrior.type][RANGE] + UNIT_STATS[warrior.type][MOVEMENT]
-            if approxDist(worker.coords, warrior.coords) < 2:
-                workerDangerScore -= 1
-
-    # Aim to attack workers, if there are no workers, aim to attack queen
-    if len(enemyWorkers) != 0:
-        targetCoords = enemyWorkers[0].coords
+    offense = len(myWarriors)
+    food = myFood
+    workers = len(myWorkers)
+    queen = 1 if enemyQueen is not None else 0
+    tempScore = 0
+    totalDist = 0
+    if len(myWorkers) > 0:
+        for worker in myWorkers:
+          totalDist += approxDist(worker.coords, myQueen.coords)
+          if worker.carrying: # if carrying go to hill/tunnel
+            tempScore += 2
+            distanceToTunnel = approxDist(worker.coords, myTunnel.coords)
+            distanceToHill = approxDist(worker.coords, myHill.coords)
+            dist = min(distanceToHill, distanceToTunnel)
+            if dist <= 3:
+              tempScore += 1
+          else: # if not carrying go to food
+            dist = approxDist(worker.coords, foodCoords)
+            if dist <= 3:
+              tempScore += 1
+    workerScore = tempScore
+    workerFood = (totalDist/len(myWorkers))
+    workerDist = 0
+    anthillDist = 0
+    if len(myWarriors) > 0:
+        for ant in myWarriors:
+          if len(enemyWorkers) > 0:
+            workerDist += approxDist(ant.coords, enemyWorkers[0].coords)
+          anthillDist += approxDist(ant.coords, enemyHill.coords)
+        warriorWorkers = (workerDist/len(myWarriors))
+        warriorAnthill = (anthillDist/len(myWarriors))
     else:
-        targetCoords = enemyQueen.coords
-
-    warriorDistScore = 0
-    # Add distance from fighter ants to their targets to score, with a preference to move vertically
-    for warrior in myWarriors:
-        warriorDistScore -= (warrior.coords[0] - targetCoords[0])**2
-        warriorDistScore -= (warrior.coords[1] - targetCoords[1])**2
-
-    #do we have an attacker?
-    attackScore = UNIT_STATS[myWarriors[0].type][ATTACK] if len(myWarriors) == 1 else 0
-
-    # punishment for if the enemy has workers
-    enemyWorkerScore = - (len(enemyWorkers) * len(myWarriors))
-
-    # Heavy punishment for not having workers, since workers are needed to win
-    noWorkerScore = -1 if len(myWorkers) == 0 else 0
-
-    foodScore = state.inventories[perspective].foodCount
-
-    antCountScore = -len(getAntList(state, perspective))
-
-    return [sigmoid(component, 0.01) for component in (queenInTheWayScore, workerDistScore, workerDangerScore, warriorDistScore, enemyWorkerScore,
-            noWorkerScore, foodScore, attackScore, antCountScore, queenHealthScore)]
+      warriorAnthill = warriorWorkers = 1000000
+    return [sigmoid(component) for component in (offense, food, workers, queen, workerScore,
+                                    workerFood, warriorWorkers, warriorAnthill)]
 
 ##
 # Node Class
