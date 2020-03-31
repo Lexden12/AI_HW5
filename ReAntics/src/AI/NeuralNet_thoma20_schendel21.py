@@ -33,11 +33,22 @@ class AIPlayer(Player):
     ##
     def __init__(self, inputPlayerId):
         super(AIPlayer, self).__init__(inputPlayerId, "NeuralNet")
-        self.nn = NeuralNetwork(10, 1, [20, 7], 0.1)
+
+        hiddenLayers = [50]
+        learningRate = .01
+
+        self.nn = NeuralNetwork(10, 1, hiddenLayers, learningRate)
         self.nn.load('../thoma20_schendel21_nn.npy')
         self.useNN = False
         self.eval = {}
         self.moveCount = 0
+        self.gameCount = 0
+
+        random.seed(435345345234)
+
+        fileName = 'NeuralNetData/{}_{}.csv'.format(hiddenLayers, learningRate)
+        self.resultFile = open(fileName, 'w')
+        self.resultFile.write("Game, Training Size, Validation Size, Min Error, Mean Error, Max Error\n")
 
     ##
     #getPlacement
@@ -57,6 +68,8 @@ class AIPlayer(Player):
         numToPlace = 0
         #implemented by students to return their next move
         if currentState.phase == SETUP_PHASE_1:  # stuff on my side
+            self.gameCount += 1
+
             numToPlace = 11
             moves = []
             for i in range(0, numToPlace):
@@ -192,6 +205,7 @@ class AIPlayer(Player):
     # This agent doens't learn
     #
     def registerWin(self, hasWon):
+        print("Game:", self.gameCount)
         print("Move Count: {}".format(self.moveCount))
         self.moveCount = 0
         if self.useNN:
@@ -206,9 +220,22 @@ class AIPlayer(Player):
         for state, target in validation:
           input = utilityComponents(state, state.whoseTurn)
           err.append(abs(target - self.nn.evaluate(input)[0]))
-        print("Min Error: {}".format(min(err)))
-        print("Avg Error: {}".format(sum(err)/len(err)))
-        print("Max Error: {}\n".format(max(err)))
+
+        # print statistics to console and file
+        minError = min(err)
+        maxError = max(err)
+        meanError = sum(err)/len(err)
+
+        print("Min Error: {}".format(minError))
+        print("Avg Error: {}".format(meanError))
+        print("Max Error: {}\n".format(maxError))
+
+        self.resultFile.write('{}, {}, {}, {}, {}, {}\n'.format(
+            self.gameCount, len(training), len(validation), minError, meanError, maxError))
+        self.resultFile.flush()
+
+        #clear the data set
+        self.eval = {}
 
     def getTrainingData(self):
         all_data = random.sample(self.eval.items(), k=len(self.eval.items()))
