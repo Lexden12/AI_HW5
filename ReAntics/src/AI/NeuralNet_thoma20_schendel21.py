@@ -34,12 +34,13 @@ class AIPlayer(Player):
     def __init__(self, inputPlayerId):
         super(AIPlayer, self).__init__(inputPlayerId, "NeuralNet")
 
-        hiddenLayers = [50]
-        learningRate = .01
+        hiddenLayers = [20]
+        learningRate = 1
 
-        self.nn = NeuralNetwork(10, 1, hiddenLayers, learningRate)
-        self.nn.load('../thoma20_schendel21_nn.npy')
+        self.nn = NeuralNetwork(8, 1, hiddenLayers, learningRate)
         self.useNN = False
+        if self.useNN:
+          self.nn.load('../thoma20_schendel21_nn.npy')
         self.eval = {}
         self.moveCount = 0
         self.gameCount = 0
