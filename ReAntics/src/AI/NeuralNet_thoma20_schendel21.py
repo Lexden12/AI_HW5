@@ -38,14 +38,14 @@ class AIPlayer(Player):
         learningRate = 1
 
         self.nn = NeuralNetwork(8, 1, hiddenLayers, learningRate)
-        self.useNN = False
+        self.useNN = True # This is how you toggle between training(False) vs using the model(True)
         if self.useNN:
-          self.nn.load('../thoma20_schendel21_nn.npy')
+          #self.nn.load('../thoma20_schendel21_nn.npy') # This is used to load a trained model if you do not want to used the pre-trained model
+          self.nn.useSavedWeights() # Loads the pre-trained model for use. Comment this out and uncomment load to use a model that you have trained
+          
         self.eval = {}
         self.moveCount = 0
         self.gameCount = 0
-
-        random.seed(435345345234)
 
         fileName = 'NeuralNetData/{}_{}.csv'.format(hiddenLayers, learningRate)
         self.resultFile = open(fileName, 'w')
@@ -434,8 +434,10 @@ def utilityComponents(state, perspective):
             dist = approxDist(worker.coords, foodCoords)
             if dist <= 3:
               tempScore += 1
-    workerScore = tempScore
-    workerFood = (totalDist/len(myWorkers))
+        workerScore = tempScore
+        workerFood = (totalDist/len(myWorkers))
+    else:
+      workerScore = workerFood = 0
     workerDist = 0
     anthillDist = 0
     if len(myWarriors) > 0:
@@ -482,17 +484,88 @@ class NeuralNetwork:
 
         self.learningRate = learningRate
 
+    #Save weights to a file (when training)
     def save(self, filepath):
       np.save(filepath, self.layers)
 
+    #Load weights from a file
     def load(self, filepath):
       #try:
       self.layers = np.load(filepath, allow_pickle=True)
       #except:
       #  print("Could not load NN")
 
+    #Saved weights that function well (1 hidden layer with 20 nodes)
+    def useSavedWeights(self):
+      saved_weights = [[[-1.89249502e+00,  7.73376175e-01, -7.85464545e-01,
+         8.02923356e-01,  5.15405736e-01, -1.26283784e+00,
+         8.36500794e-01, -8.68772606e-01,  2.38949472e-01],
+       [ 5.28244794e-01,  8.23054530e-01,  1.71275461e-01,
+         6.42923988e-01,  3.33550132e-03, -6.04578299e-01,
+        -1.83014613e-01,  5.43142115e-01, -1.15625848e+00],
+       [-4.91705469e+00, -1.52180689e-01,  2.32509649e-01,
+        -9.67160811e-02, -5.23124718e-02,  1.04306560e-02,
+         1.31853518e+00,  3.59214700e-01,  5.38714478e-01],
+       [ 2.98108165e+00,  4.27807565e-01,  7.55411421e-01,
+        -1.11534203e+00, -1.06283153e-01, -6.14401566e-01,
+        -2.67978387e-04, -1.07142045e+00,  5.81633352e-01],
+       [ 1.40219239e+00,  9.00406966e-01, -2.40981727e-01,
+        -8.55858064e-01, -7.32374515e-01,  4.91248813e-01,
+         2.92498234e-02, -7.19945657e-04, -3.33115929e-01],
+       [ 3.37269204e+00,  1.01067028e+00, -1.14461223e+00,
+        -7.63039746e-01,  7.89895121e-01, -2.54110007e-01,
+         6.77293874e-01, -6.31598229e-01, -1.06898098e+00],
+       [ 1.80374063e+00, -4.54697451e-01,  8.41714227e-01,
+         2.92953922e-01, -5.00214608e-01, -1.45303399e-01,
+        -7.02467493e-01, -3.44785886e-01,  3.09677292e-01],
+       [ 2.07814902e+00,  5.43375517e-02, -7.62888387e-01,
+        -7.32533642e-01,  4.57485996e-02,  4.78968409e-01,
+         2.55541936e-01,  3.56120108e-01, -9.64236068e-01],
+       [-2.75505949e+00,  2.73984549e-01,  7.60476823e-02,
+         9.57733214e-01,  1.90059776e-01,  6.55895860e-01,
+        -1.01524655e+00,  5.40559900e-01,  3.70169746e-01],
+       [ 3.19269091e-01, -1.46177655e-01,  4.59350236e-01,
+         6.14793297e-01, -2.38196142e-01, -9.89212951e-01,
+        -3.13981959e-01,  1.92628463e-01, -1.11163572e+00],
+       [ 1.22733474e-01, -1.00542222e+00,  9.84094842e-02,
+         5.07897031e-01, -7.08469422e-01,  4.65970280e-01,
+        -1.80755113e-01,  7.39148286e-01,  6.90400993e-01],
+       [ 3.08185132e+00,  1.70725590e-01, -8.41539379e-01,
+        -1.28302892e-01, -5.97587534e-01,  1.81268897e-02,
+        -1.09796005e+00,  5.75450909e-01,  4.55901979e-01],
+       [ 1.23404206e+00,  3.67789282e-01,  7.44102816e-02,
+        -8.15571004e-02, -2.12947644e-01, -5.25521579e-01,
+        -7.84786469e-01,  3.05280995e-01,  4.85909802e-01],
+       [ 1.97901643e-01,  4.49931946e-01, -6.81248945e-01,
+        -4.49558765e-01,  1.36443782e-03, -3.43396864e-01,
+        -3.93081176e-01, -7.81026130e-01, -1.02835677e+00],
+       [-2.47245667e+00, -1.08118925e+00, -2.67488963e-02,
+        -3.06343583e-02,  4.92922436e-01,  9.19089662e-01,
+         3.06969350e-01, -1.05214415e-01, -2.33947982e-01],
+       [-1.38896849e+00, -1.11004156e-02,  7.08624886e-01,
+         5.01014400e-01, -8.65476373e-02, -2.80635378e-01,
+         3.46110099e-01, -9.66232333e-01, -4.99543248e-03],
+       [-1.63497298e+00,  8.50328716e-01,  8.58858108e-01,
+         8.89970555e-01, -7.25292276e-01, -7.23434342e-01,
+         2.18110080e-01, -4.68515005e-01, -3.26403886e-01],
+       [-1.02471011e+00, -1.04628437e+00,  7.11188624e-01,
+         1.01809753e+00, -4.31412845e-01, -1.42178749e-01,
+        -9.28163997e-02, -2.60272651e-01,  1.17228943e-01],
+       [-9.27499634e-01,  2.25302886e-01, -3.63618315e-03,
+         2.89357663e-01, -8.29214343e-01, -6.01068344e-01,
+        -3.58079150e-01,  3.34687899e-01,  2.78399677e-01],
+       [-1.41421166e+00,  7.53845336e-02, -7.78247190e-01,
+        -2.76292129e-02,  9.25934769e-02, -6.88054340e-01,
+         2.61486361e-01,  7.57701828e-01, -4.15031750e-02]],
+      [[ 1.73234223, -0.19525996,  4.10077343, -2.00213079, -0.99918482,
+        -3.16528213, -0.67794932, -1.73533533,  2.91964606,  0.42467776,
+         0.59455297, -1.95905849, -0.13903912, -0.59835941,  2.30917294,
+         1.37311743,  1.75054948,  1.50435366,  0.94058212,  1.24027372,
+         0.1132439 ]]]
+      self.layers = saved_weights
+
+    # create a matrix of random values in range [-1, 1)
     def randomMatrix(self, numRows, numCols):
-        # create a matrix of random values in range [-1, 1)
         return 2 * np.random.random_sample((numRows, numCols)) - 1
 
     # given an input, return the result of the nueral network
@@ -581,12 +654,14 @@ def sigmoid(x, p=1):
 def sigmoidPrime(sig):
     return sig*(1-sig)
 
+#Sanity test on the evaluate function of the NN
 def testNN():
     np.random.seed(10)
     nn = NeuralNetwork(2, 2, [2], .1)
 
     print(nn.evaluate([1, 2]))
 
+#Sanity test on the train function of the NN
 def testTrain():
     np.random.seed(10)
     nn = NeuralNetwork(2, 2, [2], .1)
